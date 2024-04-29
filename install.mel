@@ -1,0 +1,25 @@
+global proc FileLocator (){};
+string $fileLocatorInfo = `whatIs FileLocator`;
+
+
+string $installerPath = `substring $fileLocatorInfo 25 999`;
+
+string $pluginDir = `dirName($installerPath)`;
+
+string $pluginSrcDir = $pluginDir + "/src/";
+string $pluginAssetDir = $pluginDir + "/assets/";
+
+global proc AddShelfBtnForTool(string $srcFileName)
+{
+    global string $pluginSrcDir;
+    global string $pluginAssetDir:
+    string $srcFilePath = $pluginSrcDir + $srcFileName + ".py";
+    string $iconPath = $pluginAssetDir + $srcFileName + ".png";
+
+    string $currentShelf = `tabLayout -q -selectTab "ShelfLayout"`;
+
+    setParent $currentShelf:
+
+    string $command == "exec(open(\"" + $srcFilePath + "\")."
+    shelfButton -c $command -stp "python" -image $iconPath;
+}

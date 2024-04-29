@@ -1,4 +1,4 @@
-
+import maya.cmds as mc
 
 ####################################
 #            Facilities            #
@@ -47,7 +47,6 @@ def CreateControllerForJnt(jnt, size = 10):
     mc.group(ctrlName, n = ctrlGrpName)
     mc.matchTransform(ctrlGrpName, jnt)
     mc.orientConstraint(ctrlName, jnt)
-    mc.setAttr.overrideColor
 
     return ctrlName, ctrlGrpName
 
@@ -72,6 +71,7 @@ class ThreeJntChain:
         self.root = ""
         self.middle = ""
         self.end = ""
+        self.controllerSize = 5
 
     def AutoFindJntsBasedOnSel(self):
         self.root = mc.ls(sl=True, type = "joint")[0]
@@ -79,27 +79,26 @@ class ThreeJntChain:
         self.end = mc.listRelatives(self.middle, c=True, type ="joint")[0]
 
     def RigThreeJntChain(self):
-        rootCtrl, rootCtrlGrp = CreateControllerForJnt(self.root)
-        middleCtrl, middleCtrlGrp = CreateControllerForJnt(self.middle)
-        endCtrl, endCtrlGrp = CreateControllerForJnt(self.end)
+        rootCtrl, rootCtrlGrp = CreateControllerForJnt(self.root, self.controllerSize)
+        middleCtrl, middleCtrlGrp = CreateControllerForJnt(self.middle, self.controllerSize)
+        endCtrl, endCtrlGrp = CreateControllerForJnt(self.end, self.controllerSize)
 
         mc.parent(middleCtrlGrp, rootCtrl)
         mc.parent(endCtrlGrp, middleCtrl)
 
         ikEndCtrl = "ac_ik_" + self.end
-        CreateBox(ikEndCtrl)
+        CreateBox(ikEndCtrl, self.controllerSize)
         ikEndCtrlGrp = ikEndCtrl + "_grp"
         mc.group(ikEndCtrl, n = ikEndCtrlGrp)
         mc.matchTransform(ikEndCtrlGrp, self.end)
-        endOrientConstraint = mc.orientConstraint(ikEndCtrl, self.end)
-        print(endOrientConstraint)
-
+        endOrientConstraint = mc.orientConstraint(ikEndCtrl, self.end)[0]
+        
         ikHandleName = "ikHanle_" + self.end
         mc.ikHandle(n=ikHandleName, sj = self.root, ee=self.end, sol = "ikRPsolver") 
 
         ikMidCtrl = "ac_ik_" + self.middle
         mc.spaceLocator(n=ikMidCtrl)
-
+    
         rootJntPos = GetObjPos(self.root)
         endJntPos = GetObjPos(self.end)
         poleVec = mc.getAttr(ikHandleName + ".poleVector")[0]
@@ -111,6 +110,7 @@ class ThreeJntChain:
         poleVecPos = rootJntPos + poleVec * halfArmLengh + armVec/2
         ikMidCtrlGrp = ikMidCtrl + "_grp"
         mc.group(ikMidCtrl, n = ikMidCtrlGrp)
+        mc.setAttr(ikMidCtrl+".scale", self.controllerSize, self.controllerSize, self.controllerSize, type = "float3")
         SetObjPos(ikMidCtrlGrp, poleVecPos)     
 
         mc.poleVectorConstraint(ikMidCtrl, ikHandleName)
@@ -141,48 +141,37 @@ class ThreeJntChain:
         mc.connectAttr(ikfkReverse+ ".outputX", rootCtrlGrp +".v")
 
         mc.connectAttr(ikfkReverse + ".outputX", endOrientConstraint + ".w0")
-        mc.connectAttr(ikfkBlendCtrl + "." + ikfkBlendAttr, endOrientConstraint + ".w1")
+        mc.connectAttr(ikfkBlendCtrl + "." +ikfkBlendAttr, endOrientConstraint + ".w1")
 
+        #group everything together and name it properly
         topGrpName = self.root + "_rig_grp"
         mc.group(rootCtrlGrp, ikEndCtrlGrp, ikMidCtrlGrp, ikfkBlendCtrlGrp, n = topGrpName)
-
-        mc.setAttr(ikHandleName + ".v", 0)
-
+        #hide useless stuff - ikHandle.
         mc.hide(ikHandleName)
 
-        
+
 
 ####################################
 #                UI                #
 ####################################
 
-import maya.cmds as mc
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QPushButton, QLineEdit, QHBoxLayout, QColorDialog
 from PySide2.QtGui import QDoubleValidator, QColor, QPainter, QPalette
 
-class ColorPickerWidget (QWidget):
+class ColorPickerWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.color = QColor(0,0,0)
         self.masterLayout = QVBoxLayout()
-        self.label = QLabel()
+        self.setLayout(self.masterLayout)
+        self.button = QPushButton()
         self.setAutoFillBackground(True)
-        self.masterLayout.addWidget(self.label)
-        self.setFixedSize(200,200)
+        self.masterLayout.addWidget(self.button)
+        #self.setFixedSize(100,20)
 
     def mousePressEvent(self, event):
         color = QColorDialog().getColor()
-        self.color = color
-        palette = self.label.palette()
-        palette.setColor(QPalette.Background, color)
-        self.label.setPalette(palette)
-    
-    def paintEngine(self, event):
-        return
-        painter = QPainter()
-        painter.setPen(self.color)
-        painter.drawPixmap(0,0, self.width(), self.height())
-        self.update
+        #self.button.
 
 class ThreeJntChainWiget(QWidget):
     def __init__(self):
@@ -202,41 +191,40 @@ class ThreeJntChainWiget(QWidget):
         self.selectionDisplay = QLabel()
         self.masterLayout.addWidget(self.selectionDisplay)
 
-        rigThreeJntChainBtn = QPushButton("Rig Three Jnt Chain")
-        self.masterLayout.addWidget(rigThreeJntChainBtn)
-        rigThreeJntChainBtn.clicked.connect(self.RigThreeJntChainBtnClicked)
-
         ctrlSettingLayout = QHBoxLayout()
         ctrlSizeLabel = QLabel("Controller Size: ")
         ctrlSettingLayout.addWidget(ctrlSizeLabel)
 
-
         self.ctrlSize = QLineEdit()
         self.ctrlSize.setValidator(QDoubleValidator())
         self.ctrlSize.setText("10")
-        self.ctrlSize.textChanged.connect
-        self.masterLayout.addWidget(self.ctrlSize)
+        self.ctrlSize.textChanged.connect(self.CtrlSizeValueSet)
+        ctrlSettingLayout.addWidget(self.ctrlSize)
 
         self.masterLayout.addLayout(ctrlSettingLayout)
 
-        self.colorPick = ColorPickerWidget()
-        self.masterLayout.addWidget(self.colorpicker)
+        self.colorPicker = ColorPickerWidget()
+        self.masterLayout.addWidget(self.colorPicker)
+
+        rigThreeJntChainBtn = QPushButton("Rig Three Jnt Chain")
+        self.masterLayout.addWidget(rigThreeJntChainBtn)
+        rigThreeJntChainBtn.clicked.connect(self.RigThreeJntChainBtnClicked)
+
 
         self.adjustSize()
         self.threeJntChain = ThreeJntChain()
 
+    def CtrlSizeValueSet(self, valStr:str):
+        size = float(valStr)
+        self.threeJntChain.controllerSize = size
+
     def RigThreeJntChainBtnClicked(self):
         self.threeJntChain.RigThreeJntChain()
-
 
     def AutoFindBtnClicked(self):
         print("button pressed")
         self.threeJntChain.AutoFindJntsBasedOnSel()
         self.selectionDisplay.setText(f"{self.threeJntChain.root}, {self.threeJntChain.middle}, {self.threeJntChain.end}") 
-
-    def CtrlSizeValueSet(self, valStr):
-        size= float(valStr)
-
 
 treeJntChainWidget = ThreeJntChainWiget()
 treeJntChainWidget.show()
